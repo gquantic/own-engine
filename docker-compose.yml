@@ -1,0 +1,70 @@
+version: '3.7'
+
+services:
+    slim:
+        image: php:8.2-fpm
+        working_dir: /var/www/html
+        volumes:
+            - .:/var/www/html
+        networks:
+            - app
+        environment:
+            XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
+            XDEBUG_CONFIG: 'client_host=host.docker.internal'
+        depends_on:
+            - pgsql
+            - redis
+
+    nginx:
+        image: nginx:alpine
+        ports:
+            - "80:80"
+        volumes:
+            - .:/var/www/html
+            - ./nginx.conf:/etc/nginx/conf.d/default.conf
+        networks:
+            - app
+        depends_on:
+            - slim
+    pgsql:
+        image: 'postgres:15'
+        ports:
+            - '${FORWARD_DB_PORT:-5432}:5432'
+        environment:
+            PGPASSWORD: '${DB_PASSWORD:-secret}'
+            POSTGRES_DB: '${DB_DATABASE}'
+            POSTGRES_USER: '${DB_USERNAME}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD:-secret}'
+        volumes:
+            - 'pet-pgsql:/var/lib/postgresql/data'
+            - './vendor/laravel/sail/database/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
+        networks:
+            - app
+        healthcheck:
+            test: [ "CMD", "pg_isready", "-q", "-d", "${DB_DATABASE}", "-U", "${DB_USERNAME}" ]
+            retries: 3
+            timeout: 5s
+    redis:
+        image: 'redis:alpine'
+        ports:
+            - '${FORWARD_REDIS_PORT:-6379}:6379'
+        volumes:
+            - 'pet-redis:/data'
+        networks:
+            - app
+        healthcheck:
+            test: [ "CMD", "redis-cli", "ping" ]
+            retries: 3
+            timeout: 5s
+
+networks:
+    app:
+        driver: bridge  # Changed from 'local' to 'bridge'
+
+volumes:
+    logs:
+        driver: local
+    pet-pgsql:
+        driver: local
+    pet-redis:
+        driver: local
